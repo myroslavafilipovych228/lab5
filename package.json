@@ -1,0 +1,17 @@
+{
+  "name": "lab5-proxyserver",
+  "version": "1.0.0",
+  "description": "Caching HTTP proxy server for http.cat",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "keywords": [],
+  "author": "Мирослава Філіпович lab5",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^15.1.0",
+    "superagent": "^10.4.2"
+  }
+}
