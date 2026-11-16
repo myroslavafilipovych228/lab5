@@ -26,7 +26,6 @@ const cacheDir = path.resolve(options.cache);
 // Обробка методу GET
 const handleGet = async (code, filePath, res) => {
   try {
-    // 1. Спроба прочитати картинку з локального кешу
     const cachedImage = await fs.readFile(filePath);
     res.writeHead(200, {
       'Content-Type': 'image/jpeg',
@@ -40,7 +39,6 @@ const handleGet = async (code, filePath, res) => {
     }
   }
 
-  // 2. Якщо в кеші немає — запитуємо з http.cat
   try {
     const response = await superagent
       .get(`https://http.cat/${code}`)
@@ -48,8 +46,6 @@ const handleGet = async (code, filePath, res) => {
       .parse(superagent.parse.image);
 
     const imageBuffer = response.body;
-
-    // Зберігаємо картинку в кеш і віддаємо клієнту
     await fs.writeFile(filePath, imageBuffer);
 
     res.writeHead(200, {
@@ -58,9 +54,58 @@ const handleGet = async (code, filePath, res) => {
     });
     res.end(imageBuffer);
   } catch (err) {
-    // Якщо http.cat повернув 404 або виникла помилка — у кеш нічого не зберігаємо
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     res.end(`Image for HTTP status ${code} not found.\n`);
+  }
+};
+
+// Обробка методу PUT (збереження/заміна зображення в кеші)
+const handlePut = (req, filePath, res) => {
+  const chunks = [];
+
+  req.on('data', (chunk) => {
+    chunks.push(chunk);
+  });
+
+  req.on('end', async () => {
+    try {
+      const bodyBuffer = Buffer.concat(chunks);
+      if (bodyBuffer.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Bad Request: Empty request body.\n');
+        return;
+      }
+
+      await fs.writeFile(filePath, bodyBuffer);
+      res.writeHead(201, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Created\n');
+    } catch (err) {
+      console.error('PUT error:', err);
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Internal Server Error.\n');
+    }
+  });
+
+  req.on('error', (err) => {
+    console.error('Request stream error:', err);
+    res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Internal Server Error.\n');
+  });
+};
+
+// Обробка методу DELETE (видалення зображення з кешу)
+const handleDelete = async (code, filePath, res) => {
+  try {
+    await fs.unlink(filePath);
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(`Cached image for ${code} deleted.\n`);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end(`Cached image for ${code} not found.\n`);
+    } else {
+      throw err;
+    }
   }
 };
 
@@ -81,6 +126,10 @@ const requestHandler = async (req, res) => {
 
     if (req.method === 'GET') {
       await handleGet(statusCode, cacheFilePath, res);
+    } else if (req.method === 'PUT') {
+      handlePut(req, cacheFilePath, res);
+    } else if (req.method === 'DELETE') {
+      await handleDelete(statusCode, cacheFilePath, res);
     } else {
       res.writeHead(405, {
         'Content-Type': 'text/plain; charset=utf-8',
